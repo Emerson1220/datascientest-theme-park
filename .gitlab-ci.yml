@@ -1,0 +1,193 @@
+variables:
+  ARTIFACT_NAME: theme-park-ride-v$CI_PIPELINE_IID.jar
+  APP_NAME: theme-park-ride-jennifer
+
+before_script:
+  - export GRADLE_USER_HOME=`pwd`/.gradle
+
+cache:
+  paths:
+    - gradle/wrapper
+    - gradle/caches
+
+stages:
+  - build
+  - test
+  - quality
+  - package
+  - deploy review
+  - deploy staging
+  - deploy production
+  - post production
+  - publishing
+
+build:
+  stage: build
+  image: openjdk:12-alpine
+  before_script:  
+    - chmod +x ./gradlew
+  script:
+    - sed -i "s/CI_PIPELINE_IID/$CI_PIPELINE_IID/" ./src/main/resources/application.yml
+    - sed -i "s/CI_COMMIT_SHORT_SHA/$CI_COMMIT_SHORT_SHA/" ./src/main/resources/application.yml
+    - sed -i "s/CI_COMMIT_BRANCH/$CI_COMMIT_BRANCH/" ./src/main/resources/application.yml
+    - ./gradlew build
+  artifacts:
+    paths:
+      - ./build/libs/
+  only:
+    - master
+    - merge_requests
+
+smoke test:
+  stage: test
+  image: openjdk:12-alpine
+  before_script:
+    - apk --no-cache add curl
+  script:
+    - java -jar ./build/libs/theme-park-ride-gradle.jar &
+    - sleep 30
+    - curl http://localhost:5000/actuator/health | grep "UP"
+  only:
+    - master
+    - merge_requests
+
+unit test:
+  stage: test
+  image: openjdk:12-alpine
+  before_script:  
+    - chmod +x ./gradlew
+  script:
+    - ./gradlew test
+  artifacts:
+    when: always
+    paths:
+      - build/test-results/test
+    reports:
+      junit: build/test-results/test/**/TEST-*.xml
+  only:
+    - master
+    - merge_requests
+
+PMDTest:
+  stage: quality
+  image: openjdk:12-alpine
+  before_script:  
+    - chmod +x ./gradlew
+  script:
+    - ./gradlew pmdMain pmdTest
+  artifacts:
+    when: always
+    paths:
+      - build/reports/pmd
+  allow_failure: true
+  only:
+    - master
+    - merge_requests
+
+release:
+  stage: package
+  image: docker:dind
+  services:
+    - docker:dind
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE .
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+    - docker push $CI_REGISTRY_IMAGE
+  only:
+    - master
+    - merge_requests
+
+review:
+  stage: deploy review
+  image: docker:dind
+  services:
+  - docker:dind
+  variables:
+    PLAYWD: ip172-18-0-50-c7i3eodmrepg00c9j0u0
+  script:
+  - apk add --no-cache --quiet py-pip
+  - pip install --quiet docker-compose~=1.23.0
+  - export DOCKER_HOST=tcp://$PLAYWD.direct.labs.play-with-docker.com:2375
+  - docker-compose down
+  - docker-compose up -d
+  environment:
+    name: review
+    url: http://$PLAYWD-5000.direct.labs.play-with-docker.com/ride/
+  only:
+    - master
+    - merge_requests
+
+staging:
+  stage: deploy staging
+  image:
+    name: banst/awscli
+    entrypoint: [""]
+  before_script:
+    - apk --no-cache add curl
+    - apk --no-cache add jq
+  script:
+    - aws configure set region us-east-1
+    - aws s3 cp ./build/libs/theme-park-ride-gradle.jar s3://$S3_BUCKET/$ARTIFACT_NAME
+    - aws elasticbeanstalk create-application-version --application-name $APP_NAME --version-label $CI_PIPELINE_IID --source-bundle S3Bucket=$S3_BUCKET,S3Key=$ARTIFACT_NAME
+    - CNAME=$(aws elasticbeanstalk update-environment --application-name $APP_NAME --environment-name "tpr-staging-jennifer" --version-label=$CI_PIPELINE_IID | jq '.CNAME' --raw-output)
+    - sleep 45
+    - curl http://$CNAME/actuator/health | grep "UP"
+    - curl http://$CNAME/actuator/info | grep $CI_PIPELINE_IID
+    - echo "DYNAMIC_ENVIRONMENT_URL=$CNAME" > deploy.env
+  artifacts:
+    reports:
+      dotenv: deploy.env
+  environment:
+    name: staging
+    url: http://$DYNAMIC_ENVIRONMENT_URL/ride
+  only:
+    - master
+
+production:
+  stage: deploy production
+  image:
+    name: banst/awscli
+    entrypoint: [""]
+  before_script:
+    - apk --no-cache add curl
+    - apk --no-cache add jq
+  script:
+    - aws configure set region us-east-1
+    - CNAME=$(aws elasticbeanstalk update-environment --application-name $APP_NAME --environment-name "tpr-production-jennifer" --version-label=$CI_PIPELINE_IID | jq '.CNAME' --raw-output)
+    - sleep 45
+    - curl http://$CNAME/actuator/health | grep "UP"
+    - curl http://$CNAME/actuator/info | grep $CI_PIPELINE_IID
+    - echo "DYNAMIC_ENVIRONMENT_URL=$CNAME" > deploy.env
+  artifacts:
+    reports:
+      dotenv: deploy.env
+  environment:
+    name: production
+    url: http://$DYNAMIC_ENVIRONMENT_URL/ride
+  when: manual
+  allow_failure: false
+  only:
+    - master
+
+api_testing:
+  stage: post production
+  image:
+    name: postman/newman_alpine33
+    entrypoint: [""]
+  script:
+    - newman --version
+    - npm install -g newman-reporter-htmlextra
+    - newman run "postman-collection.json" --reporters cli,htmlextra --reporter-htmlextra-export "newman/report.html" 
+  artifacts:
+    when: on_success
+    paths:
+      - newman/
+
+pages:
+  stage: publishing
+  script:
+    - mkdir public
+    - mv newman/report.html public/index.html
+  artifacts:
+    paths:
+      - public

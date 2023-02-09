@@ -1,0 +1,80 @@
+{
+	"info": {
+		"_postman_id": "e4a42f44-a58f-4bfa-a5d0-5557a0a36247",
+		"name": "ride API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "CRUD",
+			"item": [
+				{
+					"name": "Get all ride",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "838290a6-f7c6-417d-a387-7df2d2c719f4",
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://http://tpr-production-jennifer.eba-sbk44wx2.us-east-1.elasticbeanstalk.com/ride",
+							"host": [
+								"http://tpr-production-lim.eba-kxcahqnv.us-east-1.elasticbeanstalk.com"
+							],
+							"path": [
+								"ride"
+							]
+						}
+					},
+					"response": []
+				},
+				
+				{
+					"name": "Get single ride",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"id": "907cccdc-8da6-426d-9bef-2a618a44e8e2",
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://http://tpr-production-jennifer.eba-sbk44wx2.us-east-1.elasticbeanstalk.com/ride/1",
+							"host": [
+								"http://tpr-production-lim.eba-kxcahqnv.us-east-1.elasticbeanstalk.com"
+							],
+							"path": [
+								"ride",
+								"1"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"protocolProfileBehavior": {}
+		}
+	],
+	"protocolProfileBehavior": {}
+}

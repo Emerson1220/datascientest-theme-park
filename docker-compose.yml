@@ -1,0 +1,8 @@
+version: '2'
+services:
+  theme-park-ride-gradle:
+    image: registry.gitlab.com/jhiberne/theme-park-ride-gradle:latest
+    container_name: theme-park-ride-gradle
+    mem_limit: 512M
+    ports:
+    - 5000:5000
